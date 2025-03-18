@@ -5,15 +5,13 @@ from scipy.stats import wasserstein_distance #compare 2 probability distribution
 from scipy.stats import normaltest # is sample coming from a normal distribution?
 import pandas as pd # data manipulation tables
 import numpy as np # arrays and matrices
-import time #time related functions 
-from numpy.random import laplace
-from authorization import authorization
+from numpy.random import laplace #to get laplace distribution(noise)
+from authorization import authorization 
 
-import getpass
-import hashlib
-import os
-import random 
-import string
+import getpass # to get password
+import bcrypt #to encrypt password 
+import os #file management
+
 
 PASSWORD_FILE = "password_hash.txt"  
 
@@ -73,58 +71,57 @@ class Pretsa:
         self._distanceMatrix = self.__generateDistanceMatrixSequences(self._getAllPotentialSequencesTree(self._tree))
         self.epsilon = float(epsilon)
     
-    def _generate_salt(self):
-        #generate a random salt string
-        salt_length = 16  
-        salt = ''.join(random.choices(string.ascii_letters + string.digits, k=salt_length))
-        return salt
-
     def _hashPassword(self, password, salt=None): 
-        if not salt:
-            salt = self._generate_salt()  # generate a new salt if not provided
-        salted_password = password + salt  # combine password and salt
-        return hashlib.sha256(salted_password.encode()).hexdigest(), salt
-    
+        #generating salt
+        salt = bcrypt.gensalt()  
+        #hashing the password using bcrypt
+        hashed_password = bcrypt.hashpw(password.encode(), salt)
+        return hashed_password, salt
+
     def _load_or_set_password(self):
-        #Load the stored password hash or prompt the user to set one if missing.
+        #load the stored password hash or prompt the user to set one if its missing
         if os.path.exists(PASSWORD_FILE):
             with open(PASSWORD_FILE, "r") as f:
                 stored_hash, stored_salt = f.read().strip().split(':')
-                if stored_hash:  # Ensure the file isn't empty
-                    self.password_hash = stored_hash
-                    self.password_salt = stored_salt  # Store the salt for later comparison
+                if stored_hash:
+                    self.password_hash = stored_hash.encode()
+                    # store the salt for comparison later
+                    self.password_salt = stored_salt.encode() 
                     return
 
         # if the file is missing or empty, ask for a new password
         self._set_password()
     def _set_password(self):
-        """Prompts the user to set a secure password and stores its hash."""
+        #get password from the user
         password = getpass.getpass("Set your password: ")
         self.password_hash, self.password_salt = self._hashPassword(password)
 
-       # Save the hashed password and salt to the file (separated by a colon)
+       # save the hashed password and salt to the file
         with open(PASSWORD_FILE, "w") as f:
-            f.write(f"{self.password_hash}:{self.password_salt}")
+            f.write(f"{self.password_hash.decode()}:{self.password_salt.decode()}")
         print("Password set successfully!")
 
     def _ask_for_password(self):
-        """Asks for the password before executing sensitive operations."""
+        #ask for the password before executing sensitive operations
         attempts = 3
         while attempts > 0:
             user_input = getpass.getpass("Enter password: ")
-            hashed_input, _ = self._hashPassword(user_input, self.password_salt)
-            if hashed_input == self.password_hash:
+            # hashed_input = bcrypt.hashpw(user_input.encode(), self.password_salt)
+            #compare the hashed user password input to the hashed password 
+            if bcrypt.checkpw(user_input.encode(), self.password_hash):
+                print("\n Hello Admin: Access granted.")
                 return True
             else:
                 print(f"Incorrect password. {attempts-1} attempts remaining.")
                 attempts -= 1
         print("Access denied.")
         return False
-
+    #generate laplace noise for differential privacy
     def __generateLaplaceNoise(self, sensitivity):
         scale = self.epsilon/ sensitivity
         return laplace(loc=0, scale=scale)
-    #adds annotations to a dictionary for each activity which will be used for t-closeness checks
+
+    #add annotations to a dictionary for each activity which will be used for t-closeness checks
     def __addAnnotation(self, annotation, activity):
         dataForActivity = self.__annotationDataOverAll.get(activity, None)
         if dataForActivity is None:
@@ -143,14 +140,16 @@ class Pretsa:
     def _violatesTCloseness(self, activity, annotations, t, cases):
         distributionActivity = self.__annotationDataOverAll[activity]
         maxDifference = self.annotationMaxDifferences[activity]
-        #Consider only data from cases still in node
+        #consider data from cases still in node
         distributionEquivalenceClass = []
         casesInClass = cases.intersection(set(annotations.keys()))
         for caseInClass in casesInClass:
             distributionEquivalenceClass.append(annotations[caseInClass])
-        if len(distributionEquivalenceClass) == 0: #No original annotation is left in the node
+        #if no original annotation is left in the node
+        if len(distributionEquivalenceClass) == 0: 
             return False
-        if maxDifference == 0.0: #All annotations have the same value(most likely= 0.0)
+        #if all annotations have the same value(most likely= 0.0)
+        if maxDifference == 0.0: 
             return
         if self.__normalTCloseness == True:
             return ((wasserstein_distance(distributionActivity,distributionEquivalenceClass)/maxDifference) >= t)
@@ -170,7 +169,7 @@ class Pretsa:
                         return cutOutTraces
         return cutOutTraces
 
-    #This method removes specific traces (cases) from the tree starting from a given node.
+    #remove specific traces (cases) from the tree starting from a given node
     def _cutCasesOutOfTreeStartingFromNode(self,node,cutOutTraces,tree=None):
         if tree == None:
             tree = self._tree
@@ -188,11 +187,11 @@ class Pretsa:
             else:
                 current = current.parent
 
-    #This method retrieves all potential sequences from the tree.
+    #retrieve all potential sequences from the tree
     def _getAllPotentialSequencesTree(self, tree):
         return tree.sequences
 
-    #This method adds a trace (case) to the tree according to a sequence.
+    #add a trace to the tree according to a sequence
     def _addCaseToTree(self, trace, sequence,tree=None):
         if tree == None:
             tree = self._tree
@@ -207,9 +206,9 @@ class Pretsa:
                         currentNode = child
                         break
 
-    #This method combines a set of traces with the existing tree based on their sequence similarity.
+    #combines a set of traces with the existing tree based on their sequence similarity.
     def __combineTracesAndTree(self, traces):
-        #We transform the set of sequences into a list and sort it, to discretize the behaviour of the algorithm
+        #we transform the set of sequences into a list and sort it, to discretize the behaviour of the algorithm
         sequencesTree = list(self._getAllPotentialSequencesTree(self._tree))
         sequencesTree.sort()
         for trace in traces:
@@ -225,15 +224,13 @@ class Pretsa:
             self._overallLogDistance += lowestDistance
             self._addCaseToTree(trace, bestSequence)
     
-    #Runs the privacy-preserving algorithm, combining pruning and sequence matching to anonymize the event log while maintaining privacy.
+    #run the privacy-preserving algorithm, combining pruning and sequence matching to anonymize the event log while maintaining privacy.
     def runPretsa(self,k,t,normalTCloseness=True):
         if not self._ask_for_password():
             return "Operation canceled due to incorrect password."
-    
         self.auth.check_access('modify_all') 
+        
         self.__normalTCloseness = normalTCloseness
-        # privacy_score = self.compute_privacy_score(k, t)
-        # print("Privacy Score: ",privacy_score)
         if not self.__normalTCloseness:
             self.__haveAllValuesInActivitityDistributionTheSameValue = dict()
         self._overallLogDistance = 0.0
@@ -249,7 +246,7 @@ class Pretsa:
             self.__combineTracesAndTree(cutOutCases)
         return cutOutCases, self._overallLogDistance
 
-    #This method generates a new annotation for a given activity, typically used for adding new data points or modifying existing ones based on statistical tests.
+    #generate a new annotation for a given activity, typically used for adding new data points or modifying existing ones based on statistical tests.
     def __generateNewAnnotation(self, activity):
         #normaltest works only with more than 8 samples
         if(len(self.__annotationDataOverAll[activity])) >=8 and activity not in self.__normaltest_result_storage.keys():
@@ -266,12 +263,14 @@ class Pretsa:
         if randomValue < 0:
             randomValue = 0
 
-        # Adding Laplace noise to the generated annotation
+        #IMP
+        # adding Laplace noise to the generated annotation
+        #get the sensitivity of each activity(how much an activity's frequency can vary)
         sensitivity = self.annotationMaxDifferences.get(activity, 1.0)
         laplace_noise = self.__generateLaplaceNoise(sensitivity)
         return max(0, laplace_noise + randomValue)
 
-    #This method creates and returns a dictionary representing an event, which includes details about a given case and node.
+    #create and return a dictionary representing an event
     def getEvent(self,case,node):
         event = {
             self.__activityColName: node.name,
@@ -281,14 +280,14 @@ class Pretsa:
         }
         return event
 
-    #retrieves all events associated with a given node in the tree structure and returns them as a list.
+    #retrieves all events associated with a given node in the tree structure and returns them as a list
     def getEventsOfNode(self, node):
         events = []
         if node != self._tree:
             events = events + [self.getEvent(case, node) for case in node.cases]
         return events
 
-    #Returns the privatised event log after anonymization, sorted by case ID and event number.
+    #returns the privatised event log after anonymization, sorted by case ID and event number.
     def getPrivatisedEventLog(self):
         self.auth.check_access('view_all')
         events = []
@@ -297,7 +296,7 @@ class Pretsa:
         for node in nodeEvents:
             events.extend(node)
         
-        # Applying differential privacy on event annotations
+        # applying differential privacy on event annotations
         for event in events:
             event[self.__annotationColName] = self.__generateNewAnnotation(event[self.__activityColName])
         eventLog = pd.DataFrame(events)
@@ -306,7 +305,7 @@ class Pretsa:
         return eventLog
         
 
-    #Computes a distance matrix between all sequences using Levenshtein distance.
+    #computes a distance matrix between all sequences using Levenshtein distance.
     def __generateDistanceMatrixSequences(self,sequences):
         distanceMatrix = dict()
         for sequence1 in sequences:
@@ -317,7 +316,7 @@ class Pretsa:
         print("Generated Distance Matrix")
         return distanceMatrix
 
-    #This function calculates the distance between two sequences, sequence1 and sequence2.
+    #calculate the distance between two sequences, sequence1 and sequence2.
     def _getDistanceSequences(self, sequence1, sequence2):
         if sequence1 == "" or sequence2 == "" or sequence1 == sequence2:
             return sys.maxsize
@@ -330,14 +329,14 @@ class Pretsa:
             raise
         return distance
 
-    #This function checks if all values in a given distribution are the same.
+    #checks if all values in a given distribution are the same.
     def __areAllValuesInDistributionAreTheSame(self, distribution):
         if max(distribution) == min(distribution):
             return True
         else:
             return False
 
-    #This function checks if a distribution violates stochastic t-closeness based on the given equivalence class distribution, overall distribution, and threshold t
+    #checks if a distribution violates stochastic t-closeness based on the given equivalence class distribution, overall distribution, and threshold t
     def _violatesStochasticTCloseness(self,distributionEquivalenceClass,overallDistribution,t,activity):
         if activity not in self.__haveAllValuesInActivitityDistributionTheSameValue.keys():
             self.__haveAllValuesInActivitityDistributionTheSameValue[activity] = self.__areAllValuesInDistributionAreTheSame(overallDistribution)

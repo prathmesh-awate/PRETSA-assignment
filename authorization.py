@@ -1,12 +1,23 @@
+#authorization class
 class authorization:
     def __init__(self, role):
-        # Define roles and permissions
+        # defines roles and permissions
         self.permissions = {
-            'admin': ['view_all', 'edit_all', 'modify_all'],
+            'admin': ['view_all', 'modify_all', 'view_summary'], 
             'analyst': ['view_all'],
             'viewer': ['view_summary']
         }
         self.role = role
+    def view_data(self):
+        if self.role == 'admin':
+            return "Viewing all data: Admin Access"
+        elif self.role == 'analyst':
+            return "Viewing all data (analyst access): Limited Insights"
+        elif self.role == 'viewer':
+            return "Viewing summary data (viewer access): Basic Overview"
+        else:
+            return "No data available for this role."
+    
 
     def check_access(self, permission):
         if permission not in self.permissions.get(self.role, []):
