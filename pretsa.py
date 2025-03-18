@@ -12,6 +12,8 @@ from authorization import authorization
 import getpass
 import hashlib
 import os
+import random 
+import string
 
 PASSWORD_FILE = "password_hash.txt"  
 
@@ -70,17 +72,27 @@ class Pretsa:
         self.__haveAllValuesInActivitityDistributionTheSameValue = dict()
         self._distanceMatrix = self.__generateDistanceMatrixSequences(self._getAllPotentialSequencesTree(self._tree))
         self.epsilon = float(epsilon)
-        
-    def _hashPassword(self, password): 
-        return hashlib.sha256(password.encode()).hexdigest()
+    
+    def _generate_salt(self):
+        #generate a random salt string
+        salt_length = 16  
+        salt = ''.join(random.choices(string.ascii_letters + string.digits, k=salt_length))
+        return salt
+
+    def _hashPassword(self, password, salt=None): 
+        if not salt:
+            salt = self._generate_salt()  # generate a new salt if not provided
+        salted_password = password + salt  # combine password and salt
+        return hashlib.sha256(salted_password.encode()).hexdigest(), salt
     
     def _load_or_set_password(self):
         #Load the stored password hash or prompt the user to set one if missing.
         if os.path.exists(PASSWORD_FILE):
             with open(PASSWORD_FILE, "r") as f:
-                stored_hash = f.read().strip()
-                if stored_hash:  
+                stored_hash, stored_salt = f.read().strip().split(':')
+                if stored_hash:  # Ensure the file isn't empty
                     self.password_hash = stored_hash
+                    self.password_salt = stored_salt  # Store the salt for later comparison
                     return
 
         # if the file is missing or empty, ask for a new password
@@ -88,10 +100,11 @@ class Pretsa:
     def _set_password(self):
         """Prompts the user to set a secure password and stores its hash."""
         password = getpass.getpass("Set your password: ")
-        self.password_hash = self._hashPassword(password)
-     
+        self.password_hash, self.password_salt = self._hashPassword(password)
+
+       # Save the hashed password and salt to the file (separated by a colon)
         with open(PASSWORD_FILE, "w") as f:
-            f.write(self.password_hash)
+            f.write(f"{self.password_hash}:{self.password_salt}")
         print("Password set successfully!")
 
     def _ask_for_password(self):
@@ -99,7 +112,8 @@ class Pretsa:
         attempts = 3
         while attempts > 0:
             user_input = getpass.getpass("Enter password: ")
-            if self._hashPassword(user_input) == self.password_hash:
+            hashed_input, _ = self._hashPassword(user_input, self.password_salt)
+            if hashed_input == self.password_hash:
                 return True
             else:
                 print(f"Incorrect password. {attempts-1} attempts remaining.")
