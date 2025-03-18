@@ -1,0 +1,105 @@
+import random
+import datetime
+
+class SyntheticDataGenerator:
+    def __init__(self, original_traces):
+        self.original_traces = original_traces
+        self.activity_distribution = self.calculate_activity_distribution()
+        self.transition_matrix = self.calculate_transition_matrix()
+
+    def calculate_activity_distribution(self):
+        """
+        Calculate the distribution of activities in the original traces.
+        This gives the frequency of each activity in the dataset.
+        """
+        activity_count = {}
+        total_activities = 0
+        
+        for trace in self.original_traces:
+            for activity in trace:
+                activity_count[activity] = activity_count.get(activity, 0) + 1
+                total_activities += 1
+        
+        activity_distribution = {activity: count / total_activities for activity, count in activity_count.items()}
+        return activity_distribution
+
+    def calculate_transition_matrix(self):
+        """
+        Calculate the transition matrix between activities.
+        This stores the probability of transitioning from one activity to another.
+        """
+        transitions = {}
+        total_transitions = 0
+        
+        for trace in self.original_traces:
+            for i in range(len(trace) - 1):
+                current_activity = trace[i]
+                next_activity = trace[i + 1]
+                
+                if current_activity not in transitions:
+                    transitions[current_activity] = {}
+                
+                transitions[current_activity][next_activity] = transitions[current_activity].get(next_activity, 0) + 1
+                total_transitions += 1
+        
+        # Normalize the transition matrix
+        for current_activity in transitions:
+            total_from_current = sum(transitions[current_activity].values())
+            for next_activity in transitions[current_activity]:
+                transitions[current_activity][next_activity] /= total_from_current
+        
+        return transitions
+
+    def generate_synthetic_trace(self, trace_length):
+        """
+        Generate a synthetic trace based on activity distribution and transition matrix.
+        """
+        trace = []
+        current_activity = random.choices(list(self.activity_distribution.keys()), 
+                                          list(self.activity_distribution.values()))[0]
+        trace.append(current_activity)
+        
+        for _ in range(trace_length - 1):
+            # Handle case where no transitions are available for the current activity
+            if current_activity not in self.transition_matrix or not self.transition_matrix[current_activity]:
+                # If no transitions exist, restart the trace from a random activity
+                current_activity = random.choices(list(self.activity_distribution.keys()), 
+                                                  list(self.activity_distribution.values()))[0]
+            else:
+                next_activity = random.choices(list(self.transition_matrix.get(current_activity, {}).keys()), 
+                                              list(self.transition_matrix.get(current_activity, {}).values()))[0]
+                trace.append(next_activity)
+                current_activity = next_activity
+        
+        return trace
+
+    def generate_synthetic_data(self, num_traces, max_trace_length):
+        """
+        Generate a synthetic dataset with the given number of traces and maximum trace length.
+        """
+        synthetic_data = []
+        
+        for _ in range(num_traces):
+            trace_length = random.randint(1, max_trace_length)
+            synthetic_trace = self.generate_synthetic_trace(trace_length)
+            synthetic_data.append(synthetic_trace)
+        
+        return synthetic_data
+
+
+# Example usage:
+original_traces = [
+    ["Login", "Browse", "Add to Cart", "Purchase"],
+    ["Login", "Browse", "Browse", "Add to Cart", "Payment"],
+    ["Login", "Browse", "Browse", "Browse", "Purchase"],
+]
+
+# Initialize the synthetic data generator
+synth_data_gen = SyntheticDataGenerator(original_traces)
+
+# Generate synthetic data
+synthetic_data = synth_data_gen.generate_synthetic_data(num_traces=5, max_trace_length=6)
+
+print("Synthetic Data:")
+for trace in synthetic_data:
+    print(trace)

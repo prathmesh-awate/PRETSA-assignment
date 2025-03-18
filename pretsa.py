@@ -7,13 +7,22 @@ import pandas as pd # data manipulation tables
 import numpy as np # arrays and matrices
 import time #time related functions 
 from numpy.random import laplace
+from authorization import authorization
+
+import getpass
+import hashlib
+import os
+
+PASSWORD_FILE = "password_hash.txt"  
 
 class Pretsa:
     #initialise the class by processing the event log into a tree structure
     #where each node corresponds to an activity 
     #track cases and sequences of activities
-
-    def __init__(self,eventLog, epsilon=1.0):
+    def __init__(self,eventLog, epsilon='', user_role=''):
+        self.auth = authorization(user_role)
+        self.password_hash = None 
+        self._load_or_set_password()
         root = AnyNode(id='Root', name="Root", cases=set(), sequence="", annotation=dict(),sequences=set())
         current = root
         currentCase = ""
@@ -60,7 +69,43 @@ class Pretsa:
         self.__setMaxDifferences()
         self.__haveAllValuesInActivitityDistributionTheSameValue = dict()
         self._distanceMatrix = self.__generateDistanceMatrixSequences(self._getAllPotentialSequencesTree(self._tree))
-        self.epsilon = epsilon
+        self.epsilon = float(epsilon)
+        
+    def _hashPassword(self, password): 
+        return hashlib.sha256(password.encode()).hexdigest()
+    
+    def _load_or_set_password(self):
+        #Load the stored password hash or prompt the user to set one if missing.
+        if os.path.exists(PASSWORD_FILE):
+            with open(PASSWORD_FILE, "r") as f:
+                stored_hash = f.read().strip()
+                if stored_hash:  
+                    self.password_hash = stored_hash
+                    return
+
+        # if the file is missing or empty, ask for a new password
+        self._set_password()
+    def _set_password(self):
+        """Prompts the user to set a secure password and stores its hash."""
+        password = getpass.getpass("Set your password: ")
+        self.password_hash = self._hashPassword(password)
+     
+        with open(PASSWORD_FILE, "w") as f:
+            f.write(self.password_hash)
+        print("Password set successfully!")
+
+    def _ask_for_password(self):
+        """Asks for the password before executing sensitive operations."""
+        attempts = 3
+        while attempts > 0:
+            user_input = getpass.getpass("Enter password: ")
+            if self._hashPassword(user_input) == self.password_hash:
+                return True
+            else:
+                print(f"Incorrect password. {attempts-1} attempts remaining.")
+                attempts -= 1
+        print("Access denied.")
+        return False
 
     def __generateLaplaceNoise(self, sensitivity):
         scale = self.epsilon/ sensitivity
@@ -168,6 +213,10 @@ class Pretsa:
     
     #Runs the privacy-preserving algorithm, combining pruning and sequence matching to anonymize the event log while maintaining privacy.
     def runPretsa(self,k,t,normalTCloseness=True):
+        if not self._ask_for_password():
+            return "Operation canceled due to incorrect password."
+    
+        self.auth.check_access('modify_all') 
         self.__normalTCloseness = normalTCloseness
         # privacy_score = self.compute_privacy_score(k, t)
         # print("Privacy Score: ",privacy_score)
@@ -227,12 +276,13 @@ class Pretsa:
 
     #Returns the privatised event log after anonymization, sorted by case ID and event number.
     def getPrivatisedEventLog(self):
+        self.auth.check_access('view_all')
         events = []
         self.__normaltest_result_storage = dict()
         nodeEvents = [self.getEventsOfNode(node) for node in PreOrderIter(self._tree)]
         for node in nodeEvents:
             events.extend(node)
-
+        
         # Applying differential privacy on event annotations
         for event in events:
             event[self.__annotationColName] = self.__generateNewAnnotation(event[self.__activityColName])
@@ -240,6 +290,7 @@ class Pretsa:
         if not eventLog.empty:
             eventLog = eventLog.sort_values(by=[self.__caseIDColName, self.__constantEventNr])
         return eventLog
+        
 
     #Computes a distance matrix between all sequences using Levenshtein distance.
     def __generateDistanceMatrixSequences(self,sequences):
@@ -282,7 +333,7 @@ class Pretsa:
         else:
             return False
 
-    #This function calculates the stochastic t-closeness between the overall distribution and the equivalence class distribution using upper limit buckets.
+    #calculates the stochastic t-closeness between the overall distribution and the equivalence class distribution using upper limit buckets.
     def _calculateStochasticTCloseness(self, overallDistribution, equivalenceClassDistribution, upperLimitBuckets):
         overallDistribution.sort()
         equivalenceClassDistribution.sort()
@@ -308,7 +359,7 @@ class Pretsa:
                 distances.append(max(probabilityOfBucketInEQ/probabilityOfBucketInOverallDistribution,probabilityOfBucketInOverallDistribution/probabilityOfBucketInEQ))
         return max(distances)
 
-    #Calculates the bucket limits for stochastic t-closeness (used in StochasticTCloseness).
+    #the bucket limits for stochastic t-closeness (used in StochasticTCloseness).
     def _getBucketLimits(self,t,overallDistribution):
         numberOfBuckets = round(t+1)
         overallDistribution.sort()

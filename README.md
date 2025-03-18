@@ -1,22 +1,9 @@
-# PRETSA-Algorithm Family
-In this repository we provide the implementations for the PRETSA-algorithm-family. They provide algorithms to generate privatizied event logs that comply with k-anonymity and t-closeness. These event logs can be used for Process Mining. We provide an implementation of PRETSA in Python 3. Our code is available under the MIT license. Note, the MIT license is just for the source-code and not for the datasets in baselog.zip. If you use it for academic purposes please cite our paper:
+# README: Pretsa with Differential Privacy and Access Control
+
+This repository serves as an extension of PRETSA algorithm for sanitisation of event logs. 
+On top of k anonymity and t-closeness, new features namely differential privacy and access control are added to enhance the data protection capabilities of PRETSA. 
 ```
-@article{DBLP:journals/dke/FahrenkrogPetersenAW23,
-  author       = {Stephan A. Fahrenkrog{-}Petersen and
-                  Han van der Aa and
-                  Matthias Weidlich},
-  title        = {Optimal event log sanitization for privacy-preserving process mining},
-  journal      = {Data Knowl. Eng.},
-  volume       = {145},
-  pages        = {102175},
-  year         = {2023},
-  url          = {https://doi.org/10.1016/j.datak.2023.102175},
-  doi          = {10.1016/J.DATAK.2023.102175},
-  timestamp    = {Sun, 25 Jun 2023 22:03:53 +0200},
-  biburl       = {https://dblp.org/rec/journals/dke/FahrenkrogPetersenAW23.bib},
-  bibsource    = {dblp computer science bibliography, https://dblp.org}
-}
-}
+Laplace Differential Privacy: https://programming-dp.com/ch3.html 
 ```
 You can access the corresponding research paper here:
 https://doi.org/10.1016/j.datak.2023.102175
@@ -28,16 +15,14 @@ To run our algorithm you need the following Python packages:
 - NumPy (http://www.numpy.org)
 - AnyNode (https://anytree.readthedocs.io/en/latest/)
 
-We did run our algorithm only with Python 3, so we can not guarantee that it works with Python 2.
-
-## How to run PRETSA
+## How to run PRETSA with Differential Privacy and Access Control
 
 The algorithm PRETSA itself is implemented in the file *pretsa.py*. To run the algorithm you first have to initiate the *Pretsa* class and hand over an event log represented as a pandas dataframe:
 ```
 eventLog = pd.read_csv(filePath, delimiter=";")
 pretsa = Pretsa(eventLog)
 ```
-As a next step you run the PRETSA algorithm with your choosen k-anonymity(an integer) and t-closesness(a float) parameter. The algorithm then returns the cases that have been modified:
+As a next step you run the PRETSA algorithm with your choosen k-anonymity(an integer), t-closesness(a float) parameter, differential privacy epsilon and the user role. If the user has access to modify the logs the algorithm returns the cases that have been modified: 
 ```
 cutOutCases = pretsa.runPretsa(k,t)
 ```
